@@ -33,6 +33,7 @@ const run = async () => {
       .db("pharma-care")
       .collection("medicines");
     const cartsCollection = client.db("pharma-care").collection("carts");
+    const ordersCollection = client.db("pharma-care").collection("orders");
     // create user and save
     app.post("/user", async (req, res) => {
       const { user } = req.body;
@@ -117,6 +118,12 @@ const run = async () => {
     });
 
     // save order to collection after successfull payment
+    app.post("/orders", async (req, res) => {
+      const medicine = req.body;
+      medicine.status = "requested";
+      const result = await ordersCollection.insertOne(medicine);
+      res.send(result);
+    });
 
     // payments related apis
 
