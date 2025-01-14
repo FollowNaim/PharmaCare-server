@@ -1,4 +1,5 @@
 require("dotenv").config();
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const express = require("express");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const port = process.env.PORT || 5000;
@@ -113,6 +114,26 @@ const run = async () => {
         email: req.params.email,
       });
       res.send(result);
+    });
+
+    // save order to collection after successfull payment
+
+    // payments related apis
+
+    // create payment intent
+    app.post("/create-payment-intent", async (req, res) => {
+      const { email } = req.body;
+      const carts = await cartsCollection.find({ email }).toArray();
+      const totalPrice =
+        carts.reduce((acc, cur) => acc + cur.price * cur.quantity, 0) * 100;
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: totalPrice,
+        currency: "usd",
+        automatic_payment_methods: {
+          enabled: true,
+        },
+      });
+      res.send(paymentIntent);
     });
   } catch (err) {
     console.log(err);
