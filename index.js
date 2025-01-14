@@ -1,6 +1,6 @@
 require("dotenv").config();
 const express = require("express");
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const port = process.env.PORT || 5000;
 const cors = require("cors");
 const app = express();
@@ -31,6 +31,7 @@ const run = async () => {
     const medicinesCollection = client
       .db("pharma-care")
       .collection("medicines");
+    const cartsCollection = client.db("pharma-care").collection("carts");
     // create user and save
     app.post("/user", async (req, res) => {
       const { user } = req.body;
@@ -44,6 +45,73 @@ const run = async () => {
     // get all medicine data
     app.get("/medicines", async (req, res) => {
       const result = await medicinesCollection.find().toArray();
+      res.send(result);
+    });
+
+    // get medicine from cart for per user
+    app.get("/carts/:email", async (req, res) => {
+      const result = await cartsCollection
+        .find({ email: req.params.email })
+        .toArray();
+      res.send(result);
+    });
+
+    // save medicine to the cart
+    app.post("/carts", async (req, res) => {
+      const medicine = req.body;
+      const isExist = await cartsCollection.findOne({
+        email: medicine.email,
+        medicineId: medicine.medicineId,
+      });
+      if (isExist) {
+        const cartItem = await cartsCollection.updateOne(
+          {
+            email: medicine.email,
+            medicineId: medicine.medicineId,
+          },
+          {
+            $inc: {
+              quantity: 1,
+            },
+          }
+        );
+        return res.send(cartItem);
+      }
+      const result = await cartsCollection.insertOne(medicine);
+      res.send(result);
+    });
+
+    // handle increment & decrement cart item
+    app.patch("/carts/:id", async (req, res) => {
+      const id = req.params.id;
+      const decrement = req.query.decrement;
+      if (decrement) {
+        const result = await cartsCollection.updateOne(
+          { _id: new ObjectId(id) },
+          {
+            $inc: {
+              quantity: -1,
+            },
+          }
+        );
+        return res.send(result);
+      }
+      const result = await cartsCollection.updateOne(
+        { _id: new ObjectId(id) },
+        {
+          $inc: {
+            quantity: 1,
+          },
+        }
+      );
+      res.send(result);
+    });
+
+    // clear the cart
+    app.delete("/carts/clear/:email", async (req, res) => {
+      const result = await cartsCollection.deleteMany({
+        email: req.params.email,
+      });
       res.send(result);
     });
   } catch (err) {
