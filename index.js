@@ -37,6 +37,14 @@ const run = async () => {
     const categoriesCollection = client
       .db("pharma-care")
       .collection("categories");
+    const bannersCollection = client.db("pharma-care").collection("banners");
+
+    // get all banners infos
+    app.get("/banners", async (req, res) => {
+      const result = await bannersCollection.find().toArray();
+      res.send(result);
+    });
+
     // create user and save
     app.post("/user", async (req, res) => {
       const { user } = req.body;
