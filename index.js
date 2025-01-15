@@ -314,7 +314,60 @@ const run = async () => {
           },
         ])
         .toArray();
-      res.send({ totalSales, paidTotal });
+
+      const unpaidTotal = await ordersCollection
+        .aggregate([
+          {
+            $match: {
+              status: "requested",
+            },
+          },
+          {
+            $unwind: "$medicines",
+          },
+          {
+            $set: {
+              "medicines.medicineId": { $toObjectId: "$medicines.medicineId" },
+            },
+          },
+          {
+            $lookup: {
+              from: "medicines",
+              localField: "medicines.medicineId",
+              foreignField: "_id",
+              as: "medicineItems",
+            },
+          },
+          {
+            $unwind: "$medicineItems",
+          },
+          {
+            $group: {
+              _id: "$medicineItems.category",
+              totalSales: {
+                $sum: {
+                  $multiply: ["$medicineItems.price", "$medicines.quantity"],
+                },
+              },
+            },
+          },
+          {
+            $group: {
+              _id: 0,
+              items: {
+                $push: {
+                  category: "$_id",
+                  totalSales: "$totalSales",
+                },
+              },
+              totalRevenue: {
+                $sum: "$totalSales",
+              },
+            },
+          },
+        ])
+        .toArray();
+      res.send({ totalSales, paidTotal, unpaidTotal });
     });
   } catch (err) {
     console.log(err);
