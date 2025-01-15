@@ -41,7 +41,29 @@ const run = async () => {
 
     // get all banners infos
     app.get("/banners", async (req, res) => {
-      const result = await bannersCollection.find().toArray();
+      const result = await bannersCollection
+        .aggregate([
+          {
+            $addFields: {
+              priority: {
+                $cond: {
+                  if: ["$status", "added"],
+                  then: 1,
+                  else: 2,
+                },
+              },
+            },
+          },
+          {
+            $sort: { priority: 1 },
+          },
+          {
+            $project: {
+              priority: 0,
+            },
+          },
+        ])
+        .toArray();
       res.send(result);
     });
 
