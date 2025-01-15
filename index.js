@@ -205,6 +205,117 @@ const run = async () => {
       });
       res.send(paymentIntent);
     });
+
+    // dashboard related apis
+
+    // admin stats
+    app.get("/admin-stats", async (req, res) => {
+      // generating individual and total sales
+      const totalSales = await ordersCollection
+        .aggregate([
+          {
+            $unwind: "$medicines",
+          },
+          {
+            $set: {
+              "medicines.medicineId": {
+                $toObjectId: "$medicines.medicineId",
+              },
+            },
+          },
+          {
+            $lookup: {
+              from: "medicines",
+              localField: "medicines.medicineId",
+              foreignField: "_id",
+              as: "medicineItems",
+            },
+          },
+          {
+            $unwind: "$medicineItems",
+          },
+          {
+            $group: {
+              _id: "$medicineItems.category",
+              totalSales: {
+                $sum: {
+                  $multiply: ["$medicines.quantity", "$medicineItems.price"],
+                },
+              },
+            },
+          },
+          {
+            $group: {
+              _id: 0,
+              items: {
+                $push: {
+                  category: "$_id",
+                  totalSales: "$totalSales",
+                },
+              },
+              totalSales: {
+                $sum: "$totalSales",
+              },
+            },
+          },
+        ])
+        .toArray();
+
+      // generating paid individual and total sales
+      const paidTotal = await ordersCollection
+        .aggregate([
+          {
+            $match: {
+              status: "paid",
+            },
+          },
+          {
+            $unwind: "$medicines",
+          },
+          {
+            $set: {
+              "medicines.medicineId": {
+                $toObjectId: "$medicines.medicineId",
+              },
+            },
+          },
+          {
+            $lookup: {
+              from: "medicines",
+              localField: "medicines.medicineId",
+              foreignField: "_id",
+              as: "medicineItems",
+            },
+          },
+          {
+            $unwind: "$medicineItems",
+          },
+          {
+            $group: {
+              _id: "$medicineItems.category",
+              totalSales: {
+                $sum: {
+                  $multiply: ["$medicines.quantity", "$medicineItems.price"],
+                },
+              },
+            },
+          },
+          {
+            $group: {
+              _id: 0,
+              items: {
+                $push: {
+                  category: "$_id",
+                  totalSales: "$totalSales",
+                },
+              },
+              totalRevenue: { $sum: "$totalSales" },
+            },
+          },
+        ])
+        .toArray();
+      res.send({ totalSales, paidTotal });
+    });
   } catch (err) {
     console.log(err);
   }
