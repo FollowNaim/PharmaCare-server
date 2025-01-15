@@ -34,6 +34,9 @@ const run = async () => {
       .collection("medicines");
     const cartsCollection = client.db("pharma-care").collection("carts");
     const ordersCollection = client.db("pharma-care").collection("orders");
+    const categoriesCollection = client
+      .db("pharma-care")
+      .collection("categories");
     // create user and save
     app.post("/user", async (req, res) => {
       const { user } = req.body;
@@ -53,7 +56,7 @@ const run = async () => {
     // get medicine from cart for per user
     app.get("/carts/:email", async (req, res) => {
       const result = await cartsCollection
-        .find({ email: req.params.email })
+        .find({ "customer.email": req.params.email })
         .toArray();
       res.send(result);
     });
@@ -112,7 +115,7 @@ const run = async () => {
     // clear the cart
     app.delete("/carts/clear/:email", async (req, res) => {
       const result = await cartsCollection.deleteMany({
-        email: req.params.email,
+        "customer.email": req.params.email,
       });
       res.send(result);
     });
@@ -193,9 +196,13 @@ const run = async () => {
     // create payment intent
     app.post("/create-payment-intent", async (req, res) => {
       const { email } = req.body;
-      const carts = await cartsCollection.find({ email }).toArray();
+      const carts = await cartsCollection
+        .find({ "customer.email": email })
+        .toArray();
       const totalPrice =
         carts.reduce((acc, cur) => acc + cur.price * cur.quantity, 0) * 100;
+      console.log(email, carts);
+      if (!totalPrice) return;
       const paymentIntent = await stripe.paymentIntents.create({
         amount: totalPrice,
         currency: "usd",
@@ -207,6 +214,8 @@ const run = async () => {
     });
 
     // dashboard related apis
+
+    // admin apis
 
     // admin stats
     app.get("/admin-stats", async (req, res) => {
@@ -315,6 +324,7 @@ const run = async () => {
         ])
         .toArray();
 
+      // generating unpaid individual and total sales
       const unpaidTotal = await ordersCollection
         .aggregate([
           {
@@ -368,6 +378,93 @@ const run = async () => {
         ])
         .toArray();
       res.send({ totalSales, paidTotal, unpaidTotal });
+    });
+
+    // get all users
+    app.get("/users", async (req, res) => {
+      const result = await usersCollection.find().toArray();
+      res.send(result);
+    });
+
+    // get all categories lists
+    app.get("/categories", async (req, res) => {
+      const result = await categoriesCollection.find().toArray();
+      res.send(result);
+    });
+
+    // get all payments
+    app.get("/payments", async (req, res) => {
+      const result = await ordersCollection
+        .aggregate([
+          {
+            $addFields: {
+              priority: {
+                $cond: {
+                  if: { $eq: ["$status", "requested"] },
+                  then: 1,
+                  else: 2,
+                },
+              },
+            },
+          },
+          {
+            $sort: { priority: 1 },
+          },
+          {
+            $project: {
+              priority: 0,
+            },
+          },
+        ])
+        .toArray();
+      res.send(result);
+    });
+
+    // get custom sales report
+    app.get("/sales-report", async (req, res) => {
+      const result = await ordersCollection
+        .aggregate([
+          {
+            $unwind: "$medicines",
+          },
+          {
+            $set: {
+              "medicines.medicineId": {
+                $toObjectId: "$medicines.medicineId",
+              },
+            },
+          },
+          {
+            $lookup: {
+              from: "medicines",
+              localField: "medicines.medicineId",
+              foreignField: "_id",
+              as: "medicineItems",
+            },
+          },
+          {
+            $unwind: "$medicineItems",
+          },
+          {
+            $addFields: {
+              IndividualTotal: {
+                $sum: {
+                  $multiply: ["$medicineItems.price", "$medicines.quantity"],
+                },
+              },
+              perUnitPrice: "$medicineItems.price",
+            },
+          },
+          {
+            $project: {
+              _id: 1,
+              medicineItems: 0,
+              totalPrice: 0,
+            },
+          },
+        ])
+        .toArray();
+      res.send(result);
     });
   } catch (err) {
     console.log(err);
