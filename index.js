@@ -439,27 +439,39 @@ const run = async () => {
               from: "medicines",
               localField: "medicines.medicineId",
               foreignField: "_id",
-              as: "medicineItems",
+              as: "medicineDetails",
             },
           },
           {
-            $unwind: "$medicineItems",
+            $unwind: "$medicineDetails",
           },
           {
             $addFields: {
-              IndividualTotal: {
+              "medicines.consumer.name": "$name",
+              "medicines.consumer.email": "$email",
+              "medicines.transactionId": "$transactionId",
+              "medicines.medicineName": "$medicineDetails.name",
+              "medicines.IndividualTotal": {
                 $sum: {
-                  $multiply: ["$medicineItems.price", "$medicines.quantity"],
+                  $multiply: ["$medicineDetails.price", "$medicines.quantity"],
                 },
               },
-              perUnitPrice: "$medicineItems.price",
+              "medicines.perUnitPrice": "$medicineDetails.price",
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              medicines: { $push: "$medicines" },
+              totalPrice: { $sum: "$medicines.IndividualTotal" },
             },
           },
           {
             $project: {
               _id: 1,
-              medicineItems: 0,
-              totalPrice: 0,
+              medicines: 1,
+              totalPrice: 1,
+              name: 1,
             },
           },
         ])
