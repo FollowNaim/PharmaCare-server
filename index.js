@@ -117,6 +117,69 @@ const run = async () => {
       res.send(result);
     });
 
+    // get invoice by payment id
+    app.get("/invoice/:invoiceId", async (req, res) => {
+      // aggregate to join the medicine details from medicines to the ordered items with medicineId
+      const result = await ordersCollection
+        .aggregate([
+          {
+            $match: {
+              transactionId: req.params.invoiceId,
+            },
+          },
+          {
+            $unwind: "$medicines",
+          },
+          {
+            $set: {
+              "medicines.medicineId": {
+                $toObjectId: "$medicines.medicineId",
+              },
+            },
+          },
+          {
+            $lookup: {
+              from: "medicines",
+              localField: "medicines.medicineId",
+              foreignField: "_id",
+              as: "medicineDetails",
+            },
+          },
+          {
+            $unwind: "$medicineDetails",
+          },
+          {
+            $addFields: {
+              "medicines.totalPrice": {
+                $multiply: ["$medicineDetails.price", "$medicines.quantity"],
+              },
+            },
+          },
+          {
+            $group: {
+              _id: "$_id",
+              transactionId: { $first: "$transactionId" },
+              ordered_items: {
+                $push: {
+                  itemId: "$medicines.medicineId",
+                  quantity: "$medicines.quantity",
+                  name: "$medicineDetails.name",
+                  unitPrice: "$medicineDetails.price",
+                  totalPrice: "$medicines.totalPrice",
+                },
+              },
+              totalOrderPrice: {
+                $sum: {
+                  $multiply: ["$medicineDetails.price", "$medicines.quantity"],
+                },
+              },
+            },
+          },
+        ])
+        .toArray();
+      res.send(result[0] || []);
+    });
+
     // save order to collection after successfull payment
     app.post("/orders", async (req, res) => {
       const medicine = req.body;
