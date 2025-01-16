@@ -504,6 +504,12 @@ const run = async () => {
       res.send(result);
     });
 
+    // save new category to db
+    app.post("/categories", verifyToken, verifyAdmin, async (req, res) => {
+      const result = await categoriesCollection.insertOne(req.body);
+      res.send(result);
+    });
+
     // get all payments
     app.get("/payments", verifyToken, verifyAdmin, async (req, res) => {
       const result = await ordersCollection
