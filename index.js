@@ -75,6 +75,15 @@ const run = async () => {
       }
     };
 
+    // get user role
+    app.get("/user-role/:email", verifyToken, async (req, res) => {
+      const email = req.decoded.email;
+      if (email !== req.params.email)
+        return res.status(401).send("unauthorized access");
+      const user = await usersCollection.findOne({ email });
+      res.send({ role: user.role });
+    });
+
     // get all banners infos
     app.get("/banners", async (req, res) => {
       const result = await bannersCollection
