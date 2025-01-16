@@ -2,6 +2,7 @@ require("dotenv").config();
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const express = require("express");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const jwt = require("jsonwebtoken");
 const port = process.env.PORT || 5000;
 const cors = require("cors");
 const app = express();
@@ -24,6 +25,20 @@ const client = new MongoClient(uri, {
   },
 });
 
+const verifyToken = async (req, res, next) => {
+  const token = req.headers?.authorization?.split(" ")[1];
+  if (!token) {
+    return res.status(401).send("unauthorized access");
+  }
+  await jwt.verify(token, process.env.JWT_SECRET_KEY, (err, decoded) => {
+    if (err) {
+      return res.status(401).send("unauthorized access");
+    }
+    req.decoded = decoded;
+    next();
+  });
+};
+
 const run = async () => {
   try {
     await client.connect();
@@ -38,6 +53,27 @@ const run = async () => {
       .db("pharma-care")
       .collection("categories");
     const bannersCollection = client.db("pharma-care").collection("banners");
+
+    // verify users admin role
+    const verifyAdmin = async (req, res, next) => {
+      const email = req.decoded.email;
+      const user = await usersCollection.findOne({ email });
+      if (user.role === "admin") {
+        next();
+      } else {
+        res.status(401).send("unauthorized access");
+      }
+    };
+    // verify users seller role
+    const verifySeller = async (req, res, next) => {
+      const email = req.decoded.email;
+      const user = await usersCollection.findOne({ email });
+      if (user.role === "seller") {
+        next();
+      } else {
+        res.status(401).send("unauthorized access");
+      }
+    };
 
     // get all banners infos
     app.get("/banners", async (req, res) => {
@@ -71,27 +107,34 @@ const run = async () => {
     app.post("/user", async (req, res) => {
       const { user } = req.body;
       const isExist = await usersCollection.findOne({ email: user.email });
-      console.log(isExist);
+
       if (isExist) return res.status(409).send("user already exist");
       const result = await usersCollection.insertOne(user);
       res.send(result);
     });
 
+    // generate jwt
+    app.post("/jwt", async (req, res) => {
+      const user = req.body;
+      const token = await jwt.sign(user, process.env.JWT_SECRET_KEY);
+      res.send(token);
+    });
+
     // get all medicine data
     app.get("/medicines", async (req, res) => {
       const email = req.query.email;
-      console.log(email);
+
       const query = {};
       if (email) {
         query["seller.email"] = email;
       }
-      console.log(query);
+
       const result = await medicinesCollection.find(query).toArray();
       res.send(result);
     });
 
     // get medicine from cart for per user
-    app.get("/carts/:email", async (req, res) => {
+    app.get("/carts/:email", verifyToken, async (req, res) => {
       const result = await cartsCollection
         .find({ "customer.email": req.params.email })
         .toArray();
@@ -99,7 +142,7 @@ const run = async () => {
     });
 
     // save medicine to the cart
-    app.post("/carts", async (req, res) => {
+    app.post("/carts", verifyToken, async (req, res) => {
       const medicine = req.body;
       const isExist = await cartsCollection.findOne({
         email: medicine.email,
@@ -124,7 +167,7 @@ const run = async () => {
     });
 
     // handle increment & decrement cart item
-    app.patch("/carts/:id", async (req, res) => {
+    app.patch("/carts/:id", verifyToken, async (req, res) => {
       const id = req.params.id;
       const decrement = req.query.decrement;
       if (decrement) {
@@ -150,7 +193,7 @@ const run = async () => {
     });
 
     // clear the cart
-    app.delete("/carts/clear/:email", async (req, res) => {
+    app.delete("/carts/clear/:email", verifyToken, async (req, res) => {
       const result = await cartsCollection.deleteMany({
         "customer.email": req.params.email,
       });
@@ -158,7 +201,7 @@ const run = async () => {
     });
 
     // get invoice by payment id
-    app.get("/invoice/:invoiceId", async (req, res) => {
+    app.get("/invoice/:invoiceId", verifyToken, async (req, res) => {
       // aggregate to join the medicine details from medicines to the ordered items with medicineId
       const result = await ordersCollection
         .aggregate([
@@ -221,7 +264,7 @@ const run = async () => {
     });
 
     // save order to collection after successfull payment
-    app.post("/orders", async (req, res) => {
+    app.post("/orders", verifyToken, async (req, res) => {
       const medicine = req.body;
       medicine.status = "requested";
       const result = await ordersCollection.insertOne(medicine);
@@ -231,14 +274,14 @@ const run = async () => {
     // payments related apis
 
     // create payment intent
-    app.post("/create-payment-intent", async (req, res) => {
+    app.post("/create-payment-intent", verifyToken, async (req, res) => {
       const { email } = req.body;
       const carts = await cartsCollection
         .find({ "customer.email": email })
         .toArray();
       const totalPrice =
         carts.reduce((acc, cur) => acc + cur.price * cur.quantity, 0) * 100;
-      console.log(email, carts);
+
       if (!totalPrice) return;
       const paymentIntent = await stripe.paymentIntents.create({
         amount: totalPrice,
@@ -255,7 +298,7 @@ const run = async () => {
     // admin apis
 
     // admin stats
-    app.get("/admin-stats", async (req, res) => {
+    app.get("/admin-stats", verifyToken, verifyAdmin, async (req, res) => {
       // generating individual and total sales
       const totalSales = await ordersCollection
         .aggregate([
@@ -418,19 +461,19 @@ const run = async () => {
     });
 
     // get all users
-    app.get("/users", async (req, res) => {
+    app.get("/users", verifyToken, verifyAdmin, async (req, res) => {
       const result = await usersCollection.find().toArray();
       res.send(result);
     });
 
     // get all categories lists
-    app.get("/categories", async (req, res) => {
+    app.get("/categories", verifyToken, verifyAdmin, async (req, res) => {
       const result = await categoriesCollection.find().toArray();
       res.send(result);
     });
 
     // get all payments
-    app.get("/payments", async (req, res) => {
+    app.get("/payments", verifyToken, verifyAdmin, async (req, res) => {
       const result = await ordersCollection
         .aggregate([
           {
@@ -458,7 +501,7 @@ const run = async () => {
     });
 
     // get custom sales report
-    app.get("/sales-report", async (req, res) => {
+    app.get("/sales-report", verifyToken, verifyAdmin, async (req, res) => {
       const result = await ordersCollection
         .aggregate([
           {
@@ -519,248 +562,281 @@ const run = async () => {
     // seller apis
 
     // sellar stats
-    app.get("/seller/stats/:email", async (req, res) => {
-      // generating individual and total sales
-      const totalSales = await ordersCollection
-        .aggregate([
-          {
-            $match: {
-              "medicines.seller.email": req.params.email,
-            },
-          },
-          {
-            $unwind: "$medicines",
-          },
-          {
-            $set: {
-              "medicines.medicineId": {
-                $toObjectId: "$medicines.medicineId",
+    app.get(
+      "/seller/stats/:email",
+      verifyToken,
+      verifySeller,
+      async (req, res) => {
+        // generating individual and total sales
+        const totalSales = await ordersCollection
+          .aggregate([
+            {
+              $match: {
+                "medicines.seller.email": req.params.email,
               },
             },
-          },
-          {
-            $lookup: {
-              from: "medicines",
-              localField: "medicines.medicineId",
-              foreignField: "_id",
-              as: "medicineItems",
+            {
+              $unwind: "$medicines",
             },
-          },
-          {
-            $unwind: "$medicineItems",
-          },
-          {
-            $group: {
-              _id: "$medicineItems.category",
-              totalSales: {
-                $sum: {
-                  $multiply: ["$medicines.quantity", "$medicineItems.price"],
+            {
+              $set: {
+                "medicines.medicineId": {
+                  $toObjectId: "$medicines.medicineId",
                 },
               },
             },
-          },
-          {
-            $group: {
-              _id: 0,
-              items: {
-                $push: {
-                  category: "$_id",
-                  totalSales: "$totalSales",
-                },
-              },
-              totalSales: {
-                $sum: "$totalSales",
+            {
+              $lookup: {
+                from: "medicines",
+                localField: "medicines.medicineId",
+                foreignField: "_id",
+                as: "medicineItems",
               },
             },
-          },
-        ])
-        .toArray();
+            {
+              $unwind: "$medicineItems",
+            },
+            {
+              $group: {
+                _id: "$medicineItems.category",
+                totalSales: {
+                  $sum: {
+                    $multiply: ["$medicines.quantity", "$medicineItems.price"],
+                  },
+                },
+              },
+            },
+            {
+              $group: {
+                _id: 0,
+                items: {
+                  $push: {
+                    category: "$_id",
+                    totalSales: "$totalSales",
+                  },
+                },
+                totalSales: {
+                  $sum: "$totalSales",
+                },
+              },
+            },
+          ])
+          .toArray();
 
-      // generating paid individual and total sales
-      const paidTotal = await ordersCollection
-        .aggregate([
-          {
-            $match: {
-              "medicines.seller.email": req.params.email,
-            },
-          },
-          {
-            $match: {
-              status: "paid",
-            },
-          },
-          {
-            $unwind: "$medicines",
-          },
-          {
-            $set: {
-              "medicines.medicineId": {
-                $toObjectId: "$medicines.medicineId",
+        // generating paid individual and total sales
+        const paidTotal = await ordersCollection
+          .aggregate([
+            {
+              $match: {
+                "medicines.seller.email": req.params.email,
               },
             },
-          },
-          {
-            $lookup: {
-              from: "medicines",
-              localField: "medicines.medicineId",
-              foreignField: "_id",
-              as: "medicineItems",
+            {
+              $match: {
+                status: "paid",
+              },
             },
-          },
-          {
-            $unwind: "$medicineItems",
-          },
-          {
-            $group: {
-              _id: "$medicineItems.category",
-              totalSales: {
-                $sum: {
-                  $multiply: ["$medicines.quantity", "$medicineItems.price"],
+            {
+              $unwind: "$medicines",
+            },
+            {
+              $set: {
+                "medicines.medicineId": {
+                  $toObjectId: "$medicines.medicineId",
                 },
               },
             },
-          },
-          {
-            $group: {
-              _id: 0,
-              items: {
-                $push: {
-                  category: "$_id",
-                  totalSales: "$totalSales",
+            {
+              $lookup: {
+                from: "medicines",
+                localField: "medicines.medicineId",
+                foreignField: "_id",
+                as: "medicineItems",
+              },
+            },
+            {
+              $unwind: "$medicineItems",
+            },
+            {
+              $group: {
+                _id: "$medicineItems.category",
+                totalSales: {
+                  $sum: {
+                    $multiply: ["$medicines.quantity", "$medicineItems.price"],
+                  },
                 },
               },
-              totalRevenue: { $sum: "$totalSales" },
             },
-          },
-        ])
-        .toArray();
+            {
+              $group: {
+                _id: 0,
+                items: {
+                  $push: {
+                    category: "$_id",
+                    totalSales: "$totalSales",
+                  },
+                },
+                totalRevenue: { $sum: "$totalSales" },
+              },
+            },
+          ])
+          .toArray();
 
-      // generating unpaid individual and total sales
-      const unpaidTotal = await ordersCollection
-        .aggregate([
-          {
-            $match: {
-              "medicines.seller.email": req.params.email,
+        // generating unpaid individual and total sales
+        const unpaidTotal = await ordersCollection
+          .aggregate([
+            {
+              $match: {
+                "medicines.seller.email": req.params.email,
+              },
             },
-          },
-          {
-            $match: {
-              status: "requested",
+            {
+              $match: {
+                status: "requested",
+              },
             },
-          },
-          {
-            $unwind: "$medicines",
-          },
-          {
-            $set: {
-              "medicines.medicineId": { $toObjectId: "$medicines.medicineId" },
+            {
+              $unwind: "$medicines",
             },
-          },
-          {
-            $lookup: {
-              from: "medicines",
-              localField: "medicines.medicineId",
-              foreignField: "_id",
-              as: "medicineItems",
-            },
-          },
-          {
-            $unwind: "$medicineItems",
-          },
-          {
-            $group: {
-              _id: "$medicineItems.category",
-              totalSales: {
-                $sum: {
-                  $multiply: ["$medicineItems.price", "$medicines.quantity"],
+            {
+              $set: {
+                "medicines.medicineId": {
+                  $toObjectId: "$medicines.medicineId",
                 },
               },
             },
-          },
-          {
-            $group: {
-              _id: 0,
-              items: {
-                $push: {
-                  category: "$_id",
-                  totalSales: "$totalSales",
-                },
-              },
-              totalRevenue: {
-                $sum: "$totalSales",
+            {
+              $lookup: {
+                from: "medicines",
+                localField: "medicines.medicineId",
+                foreignField: "_id",
+                as: "medicineItems",
               },
             },
-          },
-        ])
-        .toArray();
-      res.send({ totalSales, paidTotal, unpaidTotal });
-    });
+            {
+              $unwind: "$medicineItems",
+            },
+            {
+              $group: {
+                _id: "$medicineItems.category",
+                totalSales: {
+                  $sum: {
+                    $multiply: ["$medicineItems.price", "$medicines.quantity"],
+                  },
+                },
+              },
+            },
+            {
+              $group: {
+                _id: 0,
+                items: {
+                  $push: {
+                    category: "$_id",
+                    totalSales: "$totalSales",
+                  },
+                },
+                totalRevenue: {
+                  $sum: "$totalSales",
+                },
+              },
+            },
+          ])
+          .toArray();
+        res.send({ totalSales, paidTotal, unpaidTotal });
+      }
+    );
 
     // seller payments history with custom field with aggregate
-    app.get("/seller/payments/:email", async (req, res) => {
-      const result = await ordersCollection
-        .aggregate([
-          {
-            $match: {
-              "medicines.seller.email": req.params.email,
-            },
-          },
-          {
-            $unwind: "$medicines",
-          },
-          {
-            $addFields: {
-              medicineId: {
-                $toObjectId: "$medicines.medicineId",
+    app.get(
+      "/seller/payments/:email",
+      verifyToken,
+      verifySeller,
+      async (req, res) => {
+        const result = await ordersCollection
+          .aggregate([
+            {
+              $match: {
+                "medicines.seller.email": req.params.email,
               },
             },
-          },
-          {
-            $lookup: {
-              from: "medicines",
-              localField: "medicineId",
-              foreignField: "_id",
-              as: "medicineDetails",
+            {
+              $unwind: "$medicines",
             },
-          },
-          {
-            $unwind: "$medicineDetails",
-          },
-          {
-            $addFields: {
-              "medicines.transactionId": "$transactionId",
-              "medicines.consumer.name": "$name",
-              "medicines.consumer.email": "$email",
-              "medicines.status": "$status",
-              "medicines.unitPrice": "$medicineDetails.price",
-              "medicines.individualTotal": {
-                $sum: {
-                  $multiply: ["$medicines.quantity", "$medicineDetails.price"],
+            {
+              $addFields: {
+                medicineId: {
+                  $toObjectId: "$medicines.medicineId",
                 },
               },
             },
-          },
-          {
-            $group: {
-              _id: "$medicines.seller.email",
-              orders: {
-                $push: {
-                  medicine: "$medicines",
+            {
+              $lookup: {
+                from: "medicines",
+                localField: "medicineId",
+                foreignField: "_id",
+                as: "medicineDetails",
+              },
+            },
+            {
+              $unwind: "$medicineDetails",
+            },
+            {
+              $addFields: {
+                "medicines.transactionId": "$transactionId",
+                "medicines.consumer.name": "$name",
+                "medicines.consumer.email": "$email",
+                "medicines.status": "$status",
+                "medicines.unitPrice": "$medicineDetails.price",
+                "medicines.individualTotal": {
+                  $sum: {
+                    $multiply: [
+                      "$medicines.quantity",
+                      "$medicineDetails.price",
+                    ],
+                  },
                 },
               },
             },
-          },
-          {
-            $project: {
-              email: "$_id",
-              orders: 1,
-              _id: 0,
+            {
+              $group: {
+                _id: "$medicines.seller.email",
+                orders: {
+                  $push: {
+                    medicine: "$medicines",
+                  },
+                },
+              },
             },
-          },
-        ])
-        .toArray();
-      res.send(result);
-    });
+            {
+              $project: {
+                email: "$_id",
+                orders: 1,
+                _id: 0,
+              },
+            },
+          ])
+          .toArray();
+        res.send(result);
+      }
+    );
+
+    // sellers advertisements
+    app.get(
+      "/seller/advertisements/:email",
+      verifyToken,
+      verifySeller,
+      async (req, res) => {
+        if (!req.params.email) {
+          return res.send("not allowed");
+        }
+        const result = await bannersCollection
+          .find({
+            "seller.email": req.params.email,
+          })
+          .toArray();
+        res.send(result);
+      }
+    );
   } catch (err) {
     console.log(err);
   }
