@@ -500,7 +500,12 @@ const run = async () => {
 
     // get all categories lists
     app.get("/categories", verifyToken, async (req, res) => {
-      const result = await categoriesCollection.find().toArray();
+      const id = req.query.id;
+      const query = {};
+      if (id) {
+        query._id = new ObjectId(id);
+      }
+      const result = await categoriesCollection.find(query).toArray();
       res.send(result);
     });
 
@@ -510,6 +515,34 @@ const run = async () => {
       res.send(result);
     });
 
+    // update a category
+    app.put("/categories/:id", verifyToken, verifyAdmin, async (req, res) => {
+      const data = req.body;
+      const result = await categoriesCollection.updateOne(
+        { _id: new ObjectId(req.params.id) },
+        {
+          $set: {
+            name: data.name,
+            image: data.image,
+            description: data.description,
+          },
+        }
+      );
+      res.send(result);
+    });
+
+    // delete category from db
+    app.delete(
+      "/categories/:id",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        const result = await categoriesCollection.deleteOne({
+          _id: new ObjectId(req.params.id),
+        });
+        res.send(result);
+      }
+    );
     // get all payments
     app.get("/payments", verifyToken, verifyAdmin, async (req, res) => {
       const result = await ordersCollection
