@@ -25,13 +25,14 @@ const client = new MongoClient(uri, {
   },
 });
 
-const verifyToken = async (req, res, next) => {
+const verifyToken = (req, res, next) => {
   const token = req.headers?.authorization?.split(" ")[1];
   if (!token) {
     return res.status(401).send("unauthorized access");
   }
-  await jwt.verify(token, process.env.JWT_SECRET_KEY, (err, decoded) => {
+  jwt.verify(token, process.env.JWT_SECRET_KEY, (err, decoded) => {
     if (err) {
+      console.log(err);
       return res.status(401).send("unauthorized access");
     }
     req.decoded = decoded;
@@ -58,6 +59,7 @@ const run = async () => {
     const verifyAdmin = async (req, res, next) => {
       const email = req.decoded.email;
       const user = await usersCollection.findOne({ email });
+      console.log(user);
       if (user.role === "admin") {
         next();
       } else {
@@ -125,7 +127,9 @@ const run = async () => {
     // generate jwt
     app.post("/jwt", async (req, res) => {
       const user = req.body;
-      const token = await jwt.sign(user, process.env.JWT_SECRET_KEY);
+      const token = await jwt.sign(user, process.env.JWT_SECRET_KEY, {
+        expiresIn: "5d",
+      });
       res.send(token);
     });
 
@@ -269,6 +273,7 @@ const run = async () => {
           },
         ])
         .toArray();
+      console.log(result);
       res.send(result[0] || []);
     });
 
@@ -475,8 +480,24 @@ const run = async () => {
       res.send(result);
     });
 
+    // update user role
+    app.patch(
+      "/users/:id/:role",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        const result = await usersCollection.updateOne(
+          {
+            _id: new ObjectId(req.params.id),
+          },
+          { $set: { role: req.params.role } }
+        );
+        res.send(result);
+      }
+    );
+
     // get all categories lists
-    app.get("/categories", verifyToken, verifyAdmin, async (req, res) => {
+    app.get("/categories", verifyToken, async (req, res) => {
       const result = await categoriesCollection.find().toArray();
       res.send(result);
     });
@@ -828,6 +849,13 @@ const run = async () => {
         res.send(result);
       }
     );
+
+    // add medicine to the db
+    app.post("/medicines", verifyToken, verifySeller, async (req, res) => {
+      const medicine = req.body;
+      const result = await medicinesCollection.insertOne(medicine);
+      res.send(result);
+    });
 
     // sellers advertisements
     app.get(
