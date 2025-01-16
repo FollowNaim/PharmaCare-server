@@ -475,8 +475,10 @@ const run = async () => {
     });
 
     // get all users
-    app.get("/users", verifyToken, verifyAdmin, async (req, res) => {
-      const result = await usersCollection.find().toArray();
+    app.get("/users/:email", verifyToken, verifyAdmin, async (req, res) => {
+      const result = await usersCollection
+        .find({ email: { $ne: req.params.email } })
+        .toArray();
       res.send(result);
     });
 
