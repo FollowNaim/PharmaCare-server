@@ -519,7 +519,7 @@ const run = async () => {
     // seller apis
 
     // sellar stats
-    app.get("/seller-stats/:email", async (req, res) => {
+    app.get("/seller/stats/:email", async (req, res) => {
       // generating individual and total sales
       const totalSales = await ordersCollection
         .aggregate([
@@ -694,6 +694,72 @@ const run = async () => {
         ])
         .toArray();
       res.send({ totalSales, paidTotal, unpaidTotal });
+    });
+
+    // seller payments history with custom field with aggregate
+    app.get("/seller/payments/:email", async (req, res) => {
+      const result = await ordersCollection
+        .aggregate([
+          {
+            $match: {
+              "medicines.seller.email": req.params.email,
+            },
+          },
+          {
+            $unwind: "$medicines",
+          },
+          {
+            $addFields: {
+              medicineId: {
+                $toObjectId: "$medicines.medicineId",
+              },
+            },
+          },
+          {
+            $lookup: {
+              from: "medicines",
+              localField: "medicineId",
+              foreignField: "_id",
+              as: "medicineDetails",
+            },
+          },
+          {
+            $unwind: "$medicineDetails",
+          },
+          {
+            $addFields: {
+              "medicines.transactionId": "$transactionId",
+              "medicines.consumer.name": "$name",
+              "medicines.consumer.email": "$email",
+              "medicines.status": "$status",
+              "medicines.unitPrice": "$medicineDetails.price",
+              "medicines.individualTotal": {
+                $sum: {
+                  $multiply: ["$medicines.quantity", "$medicineDetails.price"],
+                },
+              },
+            },
+          },
+          {
+            $group: {
+              _id: "$medicines.seller.email",
+              orders: {
+                $push: {
+                  medicine: "$medicines",
+                },
+              },
+            },
+          },
+          {
+            $project: {
+              email: "$_id",
+              orders: 1,
+              _id: 0,
+            },
+          },
+        ])
+        .toArray();
+      res.send(result);
     });
   } catch (err) {
     console.log(err);
