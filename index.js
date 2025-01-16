@@ -571,6 +571,38 @@ const run = async () => {
       res.send(result);
     });
 
+    // update payment status
+    app.patch("/payments/:id", verifyToken, verifyAdmin, async (req, res) => {
+      const { status } = req.body;
+      const result = await ordersCollection.updateOne(
+        {
+          _id: new ObjectId(req.params.id),
+        },
+        {
+          $set: {
+            status: status,
+          },
+        }
+      );
+      res.send(result);
+    });
+
+    // update banner status
+    app.patch("/banners/:id", verifyToken, verifyAdmin, async (req, res) => {
+      const { status } = req.body;
+      const result = await bannersCollection.updateOne(
+        {
+          _id: new ObjectId(req.params.id),
+        },
+        {
+          $set: {
+            status: status,
+          },
+        }
+      );
+      res.send(result);
+    });
+
     // get custom sales report
     app.get("/sales-report", verifyToken, verifyAdmin, async (req, res) => {
       const result = await ordersCollection
@@ -915,6 +947,14 @@ const run = async () => {
         res.send(result);
       }
     );
+
+    // add sellers advertisements to db
+    app.post("/banners", verifyToken, verifySeller, async (req, res) => {
+      const banner = req.body;
+      banner.status = "requested";
+      const result = await bannersCollection.insertOne(banner);
+      res.send(result);
+    });
   } catch (err) {
     console.log(err);
   }
