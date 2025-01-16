@@ -453,6 +453,7 @@ const run = async () => {
                   $multiply: ["$medicineItems.price", "$medicines.quantity"],
                 },
               },
+              status: { $first: "$status" },
             },
           },
           {
@@ -462,6 +463,7 @@ const run = async () => {
                 $push: {
                   category: "$_id",
                   totalSales: "$totalSales",
+                  status: "$status",
                 },
               },
               totalRevenue: {
@@ -471,7 +473,115 @@ const run = async () => {
           },
         ])
         .toArray();
-      res.send({ totalSales, paidTotal, unpaidTotal });
+
+      // generating rejected individual and total sales
+      const rejectedTotal = await ordersCollection
+        .aggregate([
+          {
+            $match: {
+              status: "rejected",
+            },
+          },
+          {
+            $unwind: "$medicines",
+          },
+          {
+            $set: {
+              "medicines.medicineId": { $toObjectId: "$medicines.medicineId" },
+            },
+          },
+          {
+            $lookup: {
+              from: "medicines",
+              localField: "medicines.medicineId",
+              foreignField: "_id",
+              as: "medicineItems",
+            },
+          },
+          {
+            $unwind: "$medicineItems",
+          },
+          {
+            $group: {
+              _id: "$medicineItems.category",
+              totalSales: {
+                $sum: {
+                  $multiply: ["$medicineItems.price", "$medicines.quantity"],
+                },
+              },
+              status: { $first: "$status" },
+            },
+          },
+          {
+            $group: {
+              _id: 0,
+              items: {
+                $push: {
+                  category: "$_id",
+                  totalSales: "$totalSales",
+                  status: "$status",
+                },
+              },
+              totalRevenue: {
+                $sum: "$totalSales",
+              },
+            },
+          },
+        ])
+        .toArray();
+
+      const rejectedUnpaid = await ordersCollection
+        .aggregate([
+          {
+            $match: {
+              status: { $in: ["rejected", "requested"] },
+            },
+          },
+          {
+            $unwind: "$medicines",
+          },
+
+          {
+            $set: {
+              "medicines.medicineId": {
+                $toObjectId: "$medicines.medicineId",
+              },
+            },
+          },
+          {
+            $lookup: {
+              from: "medicines",
+              localField: "medicines.medicineId",
+              foreignField: "_id",
+              as: "medicineDetails",
+            },
+          },
+          {
+            $unwind: "$medicineDetails",
+          },
+          {
+            $group: {
+              _id: "$status",
+              occur: {
+                $sum: 1,
+              },
+              totalPrice: {
+                $sum: {
+                  $multiply: ["$medicineDetails.price", "$medicines.quantity"],
+                },
+              },
+            },
+          },
+        ])
+        .toArray();
+      console.log(rejectedUnpaid);
+      res.send({
+        totalSales,
+        paidTotal,
+        unpaidTotal,
+        rejectedTotal,
+        rejectedUnpaid,
+      });
     });
 
     // get all users
