@@ -79,7 +79,14 @@ const run = async () => {
 
     // get all medicine data
     app.get("/medicines", async (req, res) => {
-      const result = await medicinesCollection.find().toArray();
+      const email = req.query.email;
+      console.log(email);
+      const query = {};
+      if (email) {
+        query["seller.email"] = email;
+      }
+      console.log(query);
+      const result = await medicinesCollection.find(query).toArray();
       res.send(result);
     });
 
