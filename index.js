@@ -724,6 +724,13 @@ const run = async () => {
         req.query.fromDate === "null" || !req.query.fromDate
           ? null
           : new Date(req.query.fromDate);
+      if (fromDate) {
+        fromDate.setUTCHours(0, 0, 0, 0);
+      }
+      if (toDate) {
+        toDate.setUTCHours(23, 59, 59, 999);
+      }
+
       let matchStage = {
         $match: {},
       };
