@@ -142,14 +142,19 @@ const run = async () => {
     // get all medicine data
     app.get("/medicines", async (req, res) => {
       const desc = req.query.desc;
+      const search = req.query.search;
+      const query = {};
       const sortQuery = {};
       if (desc == "true") {
         sortQuery.price = -1;
       }
+      if (search) {
+        query.name = { $regex: search, $options: "i" };
+      }
       const page = parseInt(req.query.page) || 0;
       const size = parseInt(req.query.size) || 10;
       const result = await medicinesCollection
-        .find()
+        .find(query)
         .limit(size)
         .skip(page * size)
         .sort(sortQuery)
@@ -1123,6 +1128,83 @@ const run = async () => {
       const result = await bannersCollection.insertOne(banner);
       res.send(result);
     });
+
+    // users apis
+
+    // get users payments history
+    app.get(
+      "/users/payments/:email",
+      verifyToken,
+      verifySeller,
+      async (req, res) => {
+        const result = await ordersCollection
+          .aggregate([
+            {
+              $match: {
+                "medicines.seller.email": req.params.email,
+              },
+            },
+            {
+              $unwind: "$medicines",
+            },
+            {
+              $addFields: {
+                medicineId: {
+                  $toObjectId: "$medicines.medicineId",
+                },
+              },
+            },
+            {
+              $lookup: {
+                from: "medicines",
+                localField: "medicineId",
+                foreignField: "_id",
+                as: "medicineDetails",
+              },
+            },
+            {
+              $unwind: "$medicineDetails",
+            },
+            {
+              $addFields: {
+                "medicines.transactionId": "$transactionId",
+                "medicines.consumer.name": "$name",
+                "medicines.consumer.email": "$email",
+                "medicines.status": "$status",
+                "medicines.unitPrice": "$medicineDetails.price",
+                "medicines.individualTotal": {
+                  $sum: {
+                    $multiply: [
+                      "$medicines.quantity",
+                      "$medicineDetails.price",
+                    ],
+                  },
+                },
+              },
+            },
+            {
+              $group: {
+                _id: "$medicines.seller.email",
+                orders: {
+                  $push: {
+                    medicine: "$medicines",
+                  },
+                },
+              },
+            },
+            {
+              $project: {
+                email: "$_id",
+                orders: 1,
+                _id: 0,
+              },
+            },
+          ])
+          .toArray();
+        res.send(result);
+      }
+    );
+    app.get();
   } catch (err) {
     console.log(err);
   }
