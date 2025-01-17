@@ -281,6 +281,7 @@ const run = async () => {
     app.post("/orders", verifyToken, async (req, res) => {
       const medicine = req.body;
       medicine.status = "requested";
+      medicine.orderDate = new Date();
       const result = await ordersCollection.insertOne(medicine);
       res.send(result);
     });
@@ -715,8 +716,32 @@ const run = async () => {
 
     // get custom sales report
     app.get("/sales-report", verifyToken, verifyAdmin, async (req, res) => {
+      const toDate =
+        req.query.toDate === "null" || !req.query.toDate
+          ? null
+          : new Date(req.query.toDate);
+      const fromDate =
+        req.query.fromDate === "null" || !req.query.fromDate
+          ? null
+          : new Date(req.query.fromDate);
+      let matchStage = {
+        $match: {},
+      };
+
+      if (fromDate && !toDate) {
+        matchStage.$match.orderDate = { $gte: fromDate };
+      } else if (!fromDate && toDate) {
+        matchStage.$match.orderDate = { $lte: toDate };
+      } else if (fromDate && toDate) {
+        matchStage.$match.orderDate = { $gte: fromDate, $lte: toDate };
+      }
+
       const result = await ordersCollection
         .aggregate([
+          matchStage,
+          {
+            $sort: { orderDate: -1 },
+          },
           {
             $unwind: "$medicines",
           },
@@ -744,6 +769,7 @@ const run = async () => {
               "medicines.consumer.email": "$email",
               "medicines.transactionId": "$transactionId",
               "medicines.medicineName": "$medicineDetails.name",
+              "medicines.orderDate": "$orderDate",
               "medicines.IndividualTotal": {
                 $sum: {
                   $multiply: ["$medicineDetails.price", "$medicines.quantity"],
