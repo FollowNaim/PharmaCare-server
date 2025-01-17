@@ -77,6 +77,17 @@ const run = async () => {
       }
     };
 
+    // verify user's user role
+    const verifyUser = async (req, res, next) => {
+      const email = req.decoded.email;
+      const user = await usersCollection.findOne({ email });
+      if (user.role === "user") {
+        next();
+      } else {
+        res.status(401).send("unauthorized access");
+      }
+    };
+
     // get user role
     app.get("/user-role/:email", verifyToken, async (req, res) => {
       const email = req.decoded.email;
@@ -1135,71 +1146,10 @@ const run = async () => {
     app.get(
       "/users/payments/:email",
       verifyToken,
-      verifySeller,
+      verifyUser,
       async (req, res) => {
         const result = await ordersCollection
-          .aggregate([
-            {
-              $match: {
-                "medicines.seller.email": req.params.email,
-              },
-            },
-            {
-              $unwind: "$medicines",
-            },
-            {
-              $addFields: {
-                medicineId: {
-                  $toObjectId: "$medicines.medicineId",
-                },
-              },
-            },
-            {
-              $lookup: {
-                from: "medicines",
-                localField: "medicineId",
-                foreignField: "_id",
-                as: "medicineDetails",
-              },
-            },
-            {
-              $unwind: "$medicineDetails",
-            },
-            {
-              $addFields: {
-                "medicines.transactionId": "$transactionId",
-                "medicines.consumer.name": "$name",
-                "medicines.consumer.email": "$email",
-                "medicines.status": "$status",
-                "medicines.unitPrice": "$medicineDetails.price",
-                "medicines.individualTotal": {
-                  $sum: {
-                    $multiply: [
-                      "$medicines.quantity",
-                      "$medicineDetails.price",
-                    ],
-                  },
-                },
-              },
-            },
-            {
-              $group: {
-                _id: "$medicines.seller.email",
-                orders: {
-                  $push: {
-                    medicine: "$medicines",
-                  },
-                },
-              },
-            },
-            {
-              $project: {
-                email: "$_id",
-                orders: 1,
-                _id: 0,
-              },
-            },
-          ])
+          .find({ email: req.params.email })
           .toArray();
         res.send(result);
       }
