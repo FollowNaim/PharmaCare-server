@@ -133,16 +133,21 @@ const run = async () => {
       res.send(token);
     });
 
+    // get all medicines count
+    app.get("/medicines-count", async (req, res) => {
+      const result = await medicinesCollection.estimatedDocumentCount();
+      res.send({ count: result });
+    });
+
     // get all medicine data
     app.get("/medicines", async (req, res) => {
-      const email = req.query.email;
-
-      const query = {};
-      if (email) {
-        query["seller.email"] = email;
-      }
-
-      const result = await medicinesCollection.find(query).toArray();
+      const page = parseInt(req.query.page);
+      const size = parseInt(req.query.size);
+      const result = await medicinesCollection
+        .find()
+        .limit(size)
+        .skip(page * size)
+        .toArray();
       res.send(result);
     });
 
@@ -563,7 +568,7 @@ const run = async () => {
           {
             $group: {
               _id: "$status",
-              occur: {
+              products: {
                 $sum: 1,
               },
               totalPrice: {
@@ -575,7 +580,7 @@ const run = async () => {
           },
         ])
         .toArray();
-      console.log(rejectedUnpaid);
+
       res.send({
         totalSales,
         paidTotal,
@@ -989,6 +994,20 @@ const run = async () => {
           ])
           .toArray();
         res.send({ totalSales, paidTotal, unpaidTotal });
+      }
+    );
+
+    // sellers medicines
+    app.get(
+      "seller/medicines/:email",
+      verifyToken,
+      verifySeller,
+      async (req, res) => {
+        const email = req.params.email;
+        const result = await medicinesCollection
+          .find({ "seller.email": email })
+          .toArray();
+        res.send(result);
       }
     );
 
