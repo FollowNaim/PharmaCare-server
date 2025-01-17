@@ -141,12 +141,18 @@ const run = async () => {
 
     // get all medicine data
     app.get("/medicines", async (req, res) => {
-      const page = parseInt(req.query.page);
-      const size = parseInt(req.query.size);
+      const desc = req.query.desc;
+      const sortQuery = {};
+      if (desc == "true") {
+        sortQuery.price = -1;
+      }
+      const page = parseInt(req.query.page) || 0;
+      const size = parseInt(req.query.size) || 10;
       const result = await medicinesCollection
         .find()
         .limit(size)
         .skip(page * size)
+        .sort(sortQuery)
         .toArray();
       res.send(result);
     });
