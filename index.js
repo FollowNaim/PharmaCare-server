@@ -181,6 +181,38 @@ const run = async () => {
       res.send(result);
     });
 
+    // get all categories and their medicines count
+    app.get("/public/categories", async (req, res) => {
+      const result = await categoriesCollection
+        .aggregate([
+          {
+            $lookup: {
+              from: "medicines",
+              localField: "name",
+              foreignField: "category",
+              as: "categoryDetails",
+            },
+          },
+          {
+            $project: {
+              name: 1,
+              count: { $size: "$categoryDetails" },
+              image: "$image",
+            },
+          },
+          {
+            $project: {
+              _id: 0,
+              category: "$name",
+              image: 1,
+              count: 1,
+            },
+          },
+        ])
+        .toArray();
+      res.send(result);
+    });
+
     // get medicine from cart for per user
     app.get("/carts/:email", verifyToken, async (req, res) => {
       const result = await cartsCollection
