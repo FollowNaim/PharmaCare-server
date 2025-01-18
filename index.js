@@ -1203,6 +1203,14 @@ const run = async () => {
     });
 
     // update specific user
+    app.put(`/user/:email`, verifyToken, async (req, res) => {
+      const user = req.body;
+      const result = await usersCollection.updateOne(
+        { email: req.params.email },
+        { $set: { name: user.name, photoURL: user.photoURL } }
+      );
+      res.send(result);
+    });
   } catch (err) {
     console.log(err);
   }
