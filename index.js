@@ -15,7 +15,7 @@ app.get("/", (req, res) => {
 });
 
 // mongo url
-const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.sdg7y.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
+const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.sdg7y.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0?directConnection=true`;
 
 const client = new MongoClient(uri, {
   serverApi: {
@@ -42,7 +42,6 @@ const verifyToken = (req, res, next) => {
 
 const run = async () => {
   try {
-    await client.connect();
     console.log("server connected successfully to mongodb");
     const usersCollection = client.db("pharma-care").collection("users");
     const medicinesCollection = client
@@ -71,6 +70,7 @@ const run = async () => {
       const email = req.decoded.email;
       const user = await usersCollection.findOne({ email });
       if (user.role === "seller") {
+        console.log("seller verified");
         next();
       } else {
         res.status(401).send("unauthorized access");
@@ -91,6 +91,7 @@ const run = async () => {
     // get user role
     app.get("/user-role/:email", verifyToken, async (req, res) => {
       const email = req.decoded.email;
+      console.log(email);
       if (email !== req.params.email)
         return res.status(401).send("unauthorized access");
       const user = await usersCollection.findOne({ email });
@@ -128,9 +129,16 @@ const run = async () => {
     // create user and save
     app.post("/user", async (req, res) => {
       const { user } = req.body;
+      console.log(user);
       const isExist = await usersCollection.findOne({ email: user.email });
-
       if (isExist) return res.status(409).send("user already exist");
+      if (user.role == "admin") {
+        user.role = "user";
+      } else if (user.role == "seller") {
+        user.role = "seller";
+      } else {
+        user.role = "user";
+      }
       const result = await usersCollection.insertOne(user);
       res.send(result);
     });
@@ -1021,11 +1029,12 @@ const run = async () => {
 
     // sellers medicines
     app.get(
-      "seller/medicines/:email",
+      "/seller/medicines/:email",
       verifyToken,
       verifySeller,
       async (req, res) => {
         const email = req.params.email;
+        console.log("inside", email);
         const result = await medicinesCollection
           .find({ "seller.email": email })
           .toArray();
