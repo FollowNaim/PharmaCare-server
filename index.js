@@ -58,7 +58,6 @@ const run = async () => {
     const verifyAdmin = async (req, res, next) => {
       const email = req.decoded.email;
       const user = await usersCollection.findOne({ email });
-      console.log(user);
       if (user.role === "admin") {
         next();
       } else {
@@ -70,7 +69,6 @@ const run = async () => {
       const email = req.decoded.email;
       const user = await usersCollection.findOne({ email });
       if (user.role === "seller") {
-        console.log("seller verified");
         next();
       } else {
         res.status(401).send("unauthorized access");
@@ -91,7 +89,6 @@ const run = async () => {
     // get user role
     app.get("/user-role/:email", verifyToken, async (req, res) => {
       const email = req.decoded.email;
-      console.log(email);
       if (email !== req.params.email)
         return res.status(401).send("unauthorized access");
       const user = await usersCollection.findOne({ email });
@@ -129,7 +126,6 @@ const run = async () => {
     // create user and save
     app.post("/user", async (req, res) => {
       const { user } = req.body;
-      console.log(user);
       const isExist = await usersCollection.findOne({ email: user.email });
       if (isExist) return res.status(409).send("user already exist");
       if (user.role == "admin") {
@@ -344,7 +340,7 @@ const run = async () => {
           },
         ])
         .toArray();
-      console.log(result);
+
       res.send(result[0] || []);
     });
 
@@ -1070,7 +1066,6 @@ const run = async () => {
       verifySeller,
       async (req, res) => {
         const email = req.params.email;
-        console.log("inside", email);
         const result = await medicinesCollection
           .find({ "seller.email": email })
           .toArray();
@@ -1199,7 +1194,15 @@ const run = async () => {
         res.send(result);
       }
     );
-    app.get();
+
+    // get specific user
+    app.get("/user/:email", verifyToken, async (req, res) => {
+      console.log(req.params.email);
+      const result = await usersCollection.findOne({ email: req.params.email });
+      res.send(result);
+    });
+
+    // update specific user
   } catch (err) {
     console.log(err);
   }
