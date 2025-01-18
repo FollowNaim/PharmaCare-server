@@ -123,6 +123,14 @@ const run = async () => {
       res.send(result);
     });
 
+    // get only discounted banners
+    app.get("/banners/discounted", async (req, res) => {
+      const result = await medicinesCollection
+        .find({ discount: { $gt: 0 } })
+        .toArray();
+      res.send(result);
+    });
+
     // create user and save
     app.post("/user", async (req, res) => {
       const { user } = req.body;
