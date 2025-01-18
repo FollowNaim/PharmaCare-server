@@ -164,11 +164,15 @@ const run = async () => {
       const search = req.query.search;
       const query = {};
       const sortQuery = {};
+      const category = req.query.category;
       if (desc == "true") {
         sortQuery.price = -1;
       }
       if (search) {
         query.name = { $regex: search, $options: "i" };
+      }
+      if (category) {
+        query.category = category;
       }
       const page = parseInt(req.query.page) || 0;
       const size = parseInt(req.query.size) || 10;
