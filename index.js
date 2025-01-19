@@ -91,7 +91,7 @@ const run = async () => {
     };
 
     // get user role
-    app.get("/user-role/:email", verifyToken, async (req, res) => {
+    app.get("/user-role/:email", async (req, res) => {
       const email = req.decoded.email;
       if (email !== req.params.email)
         return res.status(401).send("unauthorized access");
@@ -1222,7 +1222,8 @@ const run = async () => {
 
     // get specific user
     app.get("/user/:email", verifyToken, async (req, res) => {
-      console.log(req.params.email);
+      if (req.decoded.email !== req.params.email)
+        return res.status(401).send("unauthorized");
       const result = await usersCollection.findOne({ email: req.params.email });
       res.send(result);
     });
