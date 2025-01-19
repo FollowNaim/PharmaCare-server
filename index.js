@@ -10,7 +10,7 @@ const app = express();
 app.use(express.json());
 app.use(
   cors({
-    origin: ["http://localhost:5173", "https://pharmacare-server.vercel.app"],
+    origin: ["http://localhost:5173", "https://pharmacares.vercel.app"],
   })
 );
 
@@ -92,9 +92,7 @@ const run = async () => {
 
     // get user role
     app.get("/user-role/:email", async (req, res) => {
-      const email = req.decoded.email;
-      if (email !== req.params.email)
-        return res.status(401).send("unauthorized access");
+      const email = req.params.email;
       const user = await usersCollection.findOne({ email });
       res.send({ role: user.role });
     });
@@ -258,9 +256,10 @@ const run = async () => {
           }
         );
         return res.send(cartItem);
+      } else {
+        const result = await cartsCollection.insertOne(medicine);
+        res.send(result);
       }
-      const result = await cartsCollection.insertOne(medicine);
-      res.send(result);
     });
 
     // handle increment & decrement cart item
@@ -1080,7 +1079,60 @@ const run = async () => {
             },
           ])
           .toArray();
-        res.send({ totalSales, paidTotal, unpaidTotal });
+
+        const rejectedUnpaid = await ordersCollection
+          .aggregate([
+            {
+              $match: {
+                "medicines.seller.email": req.params.email,
+              },
+            },
+            {
+              $match: {
+                status: { $in: ["rejected", "requested"] },
+              },
+            },
+            {
+              $unwind: "$medicines",
+            },
+
+            {
+              $set: {
+                "medicines.medicineId": {
+                  $toObjectId: "$medicines.medicineId",
+                },
+              },
+            },
+            {
+              $lookup: {
+                from: "medicines",
+                localField: "medicines.medicineId",
+                foreignField: "_id",
+                as: "medicineDetails",
+              },
+            },
+            {
+              $unwind: "$medicineDetails",
+            },
+            {
+              $group: {
+                _id: "$status",
+                products: {
+                  $sum: 1,
+                },
+                totalPrice: {
+                  $sum: {
+                    $multiply: [
+                      "$medicineDetails.price",
+                      "$medicines.quantity",
+                    ],
+                  },
+                },
+              },
+            },
+          ])
+          .toArray();
+        res.send({ totalSales, paidTotal, unpaidTotal, rejectedUnpaid });
       }
     );
 
