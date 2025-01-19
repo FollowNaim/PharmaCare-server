@@ -158,7 +158,12 @@ const run = async () => {
 
     // get all medicines count
     app.get("/medicines-count", async (req, res) => {
-      const result = await medicinesCollection.estimatedDocumentCount();
+      const category = req.query.category;
+      const query = {};
+      if (category) {
+        query.category = category;
+      }
+      const result = await medicinesCollection.countDocuments(query);
       res.send({ count: result });
     });
 
