@@ -8,7 +8,11 @@ const cors = require("cors");
 const app = express();
 
 app.use(express.json());
-app.use(cors());
+app.use(
+  cors({
+    origin: ["http://localhost:5173", "https://pharmacare-server.vercel.app"],
+  })
+);
 
 app.get("/", (req, res) => {
   res.send("server is running");
@@ -282,6 +286,14 @@ const run = async () => {
           },
         }
       );
+      res.send(result);
+    });
+
+    // delet single cart
+    app.delete("/carts/:id", verifyToken, async (req, res) => {
+      const result = cartsCollection.deleteOne({
+        _id: new ObjectId(req.params.id),
+      });
       res.send(result);
     });
 
